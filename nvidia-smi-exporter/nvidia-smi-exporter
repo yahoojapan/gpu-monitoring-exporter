@@ -1,0 +1,75 @@
+#!/bin/bash
+
+set -u
+
+COLLECT_INTERVAL_SEC=1
+OUTPUT_FILE=/run/prometheus/nvidia-smi.prom
+
+options=$(getopt -o ho:d: -- "$@")
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+eval set -- "${options}"
+
+while true; do
+    case "$1" in
+        -h) exit 1;;
+        -o) OUTPUT_FILE=$2; shift 2;;
+        -d) COLLECT_INTERVAL_SEC=$2; shift 2;;
+        *)  break;;
+    esac
+done
+
+if [ "${COLLECT_INTERVAL_SEC}" -lt 1 ]; then
+    exit 1
+fi
+
+mkdir -p $(dirname ${OUTPUT_FILE})
+BUFFER_FILE="${OUTPUT_FILE}_"
+
+trap 'echo "Caught signal, terminating..."' HUP INT QUIT PIPE TERM
+
+echo "Collecting metrics at ${OUTPUT_FILE} every ${COLLECT_INTERVAL_SEC}s..."
+
+while true
+do
+    # Clear
+    echo "" > ${BUFFER_FILE}
+
+    # Convert to prometheus format and write buffer
+    nvidia-smi-ps | \
+    awk -v "out=${BUFFER_FILE}" -v "ngpus=$(nvidia-smi -L | wc -l)" '
+    BEGIN { FS="\t" }
+    {
+        # Labels
+        i = 1
+        uuid = $(i++)
+        gpu = $(i++)
+        pid = $(i++)
+        process_name = $(i++)
+        user = $(i++)
+        mem = $(i++)
+        cpu = $(i++)
+        command = $(i++)
+        image_name = $(i++)
+        container_name = $(i++)
+
+        # Output
+        name = "process"
+        if (gpu == 0) {
+            printf "# HELP nvidia_smi_%s Process Info\n", name > out
+            printf "# TYPE nvidia_smi_%s gauge\n", name > out
+        }
+        printf "nvidia_smi_%s{gpu=\"%s\",uuid=\"%s\",pid=\"%s\",process_name=\"%s\",command=\"%s\",user=\"%s\",mem=\"%s\",cpu=\"%s\", image_name=\"%s\", container_name=\"%s\"} 1\n", name, gpu, uuid, pid, process_name, command, user, mem, cpu, image_name, container_name > out
+    }'
+
+    # Write
+    mv ${BUFFER_FILE} ${OUTPUT_FILE}
+
+    sleep ${COLLECT_INTERVAL_SEC}
+done &
+
+wait $!
+
+echo "Done"
+exit 0

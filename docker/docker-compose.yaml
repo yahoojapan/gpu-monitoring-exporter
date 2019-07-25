@@ -1,0 +1,37 @@
+version: "2.4"
+
+services:
+  node-exporter:
+    image: prom/node-exporter
+    command: --collector.textfile.directory=/run/prometheus
+    pid: "host"
+    network_mode: "host"
+    volumes:
+      - prometheus_data:/prometheus
+      - prometheus_textfiles:/run/prometheus:ro
+    restart: always
+
+  dcgm-exporter:
+    image: nvidia/dcgm-exporter
+    runtime: nvidia
+    pid: "host"
+    volumes:
+      - prometheus_textfiles:/run/prometheus
+    restart: always
+
+  nvidia-smi-exporter:
+    build: ../nvidia-smi-exporter
+    runtime: nvidia
+    pid: "host"
+    volumes:
+      - prometheus_textfiles:/run/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
+
+volumes:
+  prometheus_textfiles:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+  prometheus_data:
+    driver: local
