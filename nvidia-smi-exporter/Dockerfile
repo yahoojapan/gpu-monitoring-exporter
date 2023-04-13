@@ -1,6 +1,7 @@
-FROM nvidia/dcgm-exporter
+FROM nvidia/dcgm-exporter:3.1.7-3.1.4-ubuntu20.04
 
-RUN apt-get update \
+RUN apt-get install -y ca-certificates \
+    && apt-get update \
     && apt-get install wget -y \
     && wget -qO- https://get.docker.com | sh \
     && apt-get clean \
